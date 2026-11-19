@@ -1,0 +1,17 @@
+app:
+  name: retail-membership-agent
+  host: 0.0.0.0
+  port: 8000
+  audit_file: data/audit.jsonl
+ollama:
+  base_url: http://127.0.0.1:11434
+  model: qwen2:1.5b
+security:
+  tokens:
+    admin: admin-dev-token
+    operator: operator-dev-token
+    cashier: cashier-dev-token
+  roles:
+    admin: [admin, operator, cashier]
+    operator: [operator, cashier]
+    cashier: [cashier]
