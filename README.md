@@ -64,3 +64,5 @@ docker run --rm -p 8000:8000 -v ${PWD}/config.yaml:/app/config.yaml retail-membe
 ```
 
 容器需要能够访问 Ollama；如果 Ollama 在宿主机运行，按部署环境把 `config.yaml` 中的 `ollama.base_url` 改为容器可访问的宿主机地址。`config.yaml` 中的开发 token 只用于本地演示，上线前必须替换为环境注入的密钥并启用 HTTPS。
+
+上线时至少设置 `ADMIN_TOKEN`、`OPERATOR_TOKEN` 和 `CASHIER_TOKEN` 三个环境变量；代码会优先使用环境变量，不把生产密钥写入仓库。

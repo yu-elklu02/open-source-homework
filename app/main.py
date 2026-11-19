@@ -19,6 +19,8 @@ from pydantic import BaseModel, Field
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = Path(os.getenv("APP_CONFIG", ROOT / "config.yaml"))
 CONFIG = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", CONFIG["ollama"]["base_url"])
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", CONFIG["ollama"]["model"])
 KNOWLEDGE_DIR = ROOT / "data" / "knowledge"
 AUDIT_PATH = ROOT / CONFIG["app"]["audit_file"]
 
@@ -87,8 +89,8 @@ def call_ollama(question: str, context: str) -> str:
     """调用本机 Ollama 生成有依据的解释；网络或模型失败时抛出可识别异常。"""
 
     prompt = "你是会员权益核验助手。只能依据给定资料回答，不得编造规则。若资料冲突、缺失或涉及资产变更，必须明确建议转人工。\n资料：\n" + context + "\n问题：" + question
-    payload = json.dumps({"model": CONFIG["ollama"]["model"], "stream": False, "messages": [{"role": "user", "content": prompt}]}).encode()
-    request = urllib.request.Request(CONFIG["ollama"]["base_url"].rstrip("/") + "/api/chat", data=payload, headers={"Content-Type": "application/json"})
+    payload = json.dumps({"model": OLLAMA_MODEL, "stream": False, "messages": [{"role": "user", "content": prompt}]}).encode()
+    request = urllib.request.Request(OLLAMA_BASE_URL.rstrip("/") + "/api/chat", data=payload, headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=30) as result:
         body = json.loads(result.read().decode("utf-8"))
     return str(body.get("message", {}).get("content", ""))
@@ -107,6 +109,8 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
 
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     for role, configured in CONFIG["security"]["tokens"].items():
+        # 生产环境优先读取环境变量，避免把真实访问凭据写进配置文件或镜像。
+        configured = os.getenv(f"{role.upper()}_TOKEN", configured)
         if token == configured:
             return {"role": role}
     return fail("AUTH_REQUIRED", "请提供有效的 Bearer token")
@@ -136,7 +140,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 def health() -> ApiResponse:
     """返回服务存活状态和当前 Ollama 模型配置。"""
 
-    return response({"service": "up", "ollama_model": CONFIG["ollama"]["model"]})
+    return response({"service": "up", "ollama_model": OLLAMA_MODEL})
 
 
 @app.post("/api/v1/rights/check", response_model=ApiResponse)
@@ -163,7 +167,7 @@ def check_rights(payload: RightsCheckRequest, user: dict[str, str] | ApiResponse
         audit({"event": "rights_check", "role": permitted["role"], "coupon_code": payload.coupon_code, "decision": "handoff", "reason": "LLM_UNAVAILABLE", "detail": str(exc)})
         return response({"decision": "handoff", "reason": "LLM_UNAVAILABLE", "message": "模型服务暂不可用，请转人工。", "sources": [document["source"] for document in documents]})
     audit({"event": "rights_check", "role": permitted["role"], "coupon_code": payload.coupon_code, "decision": "answered", "sources": [document["source"] for document in documents]})
-    return response({"decision": "answered", "answer": answer, "sources": [document["source"] for document in documents], "model": CONFIG["ollama"]["model"]})
+    return response({"decision": "answered", "answer": answer, "sources": [document["source"] for document in documents], "model": OLLAMA_MODEL})
 
 
 @app.post("/api/v1/handoffs", response_model=ApiResponse)

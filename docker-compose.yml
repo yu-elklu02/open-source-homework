@@ -1,0 +1,13 @@
+services:
+  retail-membership-agent:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_CONFIG: /app/config.yaml
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN}
+      OPERATOR_TOKEN: ${OPERATOR_TOKEN:?set OPERATOR_TOKEN}
+      CASHIER_TOKEN: ${CASHIER_TOKEN:?set CASHIER_TOKEN}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
