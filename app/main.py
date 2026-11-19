@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 
@@ -110,7 +111,7 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
     token = authorization.removeprefix("Bearer ").strip() if authorization else ""
     for role, configured in CONFIG["security"]["tokens"].items():
         # 生产环境优先读取环境变量，避免把真实访问凭据写进配置文件或镜像。
-        configured = os.getenv(f"{role.upper()}_TOKEN", configured)
+        configured = os.getenv(f"{role.upper()}_TOKEN", "" if os.getenv("PUBLIC_MODE") == "1" else configured)
         if token == configured:
             return {"role": role}
     return fail("AUTH_REQUIRED", "请提供有效的 Bearer token")
@@ -134,6 +135,23 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     """把请求校验失败转换为统一错误结构，避免默认 FastAPI 响应破坏接口约定。"""
 
     return fail("VALIDATION_ERROR", "请求参数不符合接口要求")
+
+
+@app.get("/", include_in_schema=False, response_class=HTMLResponse)
+def home() -> HTMLResponse:
+    """提供浏览器操作页；用户须输入临时收银员 token 才能查询规则。"""
+
+    return HTMLResponse("""<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>会员权益核验助手</title>
+<style>body{font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#18352b;background:#faf8ef}main{background:#fffdf5;padding:26px;border:1px solid #dedfc9;border-radius:10px}label{display:block;margin:14px 0 6px}input,textarea,button{font:inherit;padding:10px;width:100%;box-sizing:border-box;border:1px solid #bbc6cc;border-radius:5px}button{margin-top:16px;background:#29443b;color:white;cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f3ec;padding:14px;border-radius:6px}small{color:#68766d}</style>
+<main><h1>会员权益核验助手</h1><p>输入优惠券编号和问题，助手会检索规则资料；涉及退款、积分或资料不足时会提示转人工。</p>
+<label for="token">访问口令</label><input id="token" type="password" autocomplete="off" placeholder="向项目演示者获取收银员口令">
+<label for="coupon">优惠券编号</label><input id="coupon" value="S8-20">
+<label for="question">问题</label><textarea id="question" rows="3">这张优惠券适用条件是什么？</textarea>
+<button id="submit">核验权益</button><h2>核验结果</h2><pre id="result" aria-live="polite">等待提交。</pre><small>演示环境；不用于真实交易，不会执行改价、发券、退款或积分变更。</small></main>
+<script>document.getElementById('submit').onclick=async()=>{const out=document.getElementById('result');out.textContent='正在核验…';try{const r=await fetch('/api/v1/rights/check',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+document.getElementById('token').value},body:JSON.stringify({coupon_code:document.getElementById('coupon').value,question:document.getElementById('question').value})});const j=await r.json();out.textContent=JSON.stringify(j,null,2)}catch(e){out.textContent='请求失败：'+e.message}};</script>
+</html>""")
 
 
 @app.get("/health", response_model=ApiResponse)
